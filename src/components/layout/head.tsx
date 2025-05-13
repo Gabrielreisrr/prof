@@ -1,7 +1,25 @@
 import { useEffect, useState, useRef } from 'react';
 import { Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, Moon, Sun } from 'lucide-react';
 
-export default function HeadLayout() {
+interface Particle {
+  id: number;
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  velocity: {
+    x: number;
+    y: number;
+  };
+}
+
+interface PlaylistItem {
+  title: string;
+  artist: string;
+  path: string;
+}
+
+export function HeadLayout() {
   const [time, setTime] = useState(new Date().toLocaleTimeString());
   const [date, setDate] = useState(new Date().toLocaleDateString('pt-BR', {
     weekday: 'long',
@@ -16,18 +34,19 @@ export default function HeadLayout() {
   const [duration, setDuration] = useState(0);
   
   const audioRef = useRef(null);
-  const canvasRef = useRef(null);
+  const animationRef = useRef(null);
   const containerRef = useRef(null);
   
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [darkMode, setDarkMode] = useState(false);
   const [particles, setParticles] = useState([]);
   const [isHovering, setIsHovering] = useState(false);
+  const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
 
   const playlist = [
-    { title: "Música 1", artist: "Artista 1", path: "/music/song1.mp3" },
-    { title: "Música 2", artist: "Artista 2", path: "/music/song2.mp3" },
-    { title: "Música 3", artist: "Artista 3", path: "/music/song3.mp3" },
+    { title: "Música 1", artist: "Artista 1", path: "/api/placeholder/400/320" },
+    { title: "Música 2", artist: "Artista 2", path: "/api/placeholder/400/320" },
+    { title: "Música 3", artist: "Artista 3", path: "/api/placeholder/400/320" },
   ];
 
   const formatTime = (time) => {
@@ -36,6 +55,119 @@ export default function HeadLayout() {
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
+  // Initialize particles
+  useEffect(() => {
+    const initParticles = () => {
+      const newParticles = [];
+      for (let i = 0; i < 50; i++) {
+        newParticles.push({
+          id: i,
+          x: Math.random() * dimensions.width,
+          y: Math.random() * dimensions.height,
+          size: Math.random() * 3 + 1,
+          color: darkMode ? 
+            `rgba(${Math.floor(Math.random() * 90 + 60)}, ${Math.floor(Math.random() * 30 + 20)}, ${Math.floor(Math.random() * 150 + 100)}, 0.8)` : 
+            `rgba(${Math.floor(Math.random() * 50 + 20)}, ${Math.floor(Math.random() * 100 + 150)}, ${Math.floor(Math.random() * 100 + 150)}, 0.8)`,
+          velocity: {
+            x: (Math.random() - 0.5) * 1,
+            y: (Math.random() - 0.5) * 1
+          }
+        });
+      }
+      setParticles(newParticles);
+    };
+
+    // Update dimensions on mount
+    if (containerRef.current) {
+      setDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    }
+
+    initParticles();
+
+    const handleResize = () => {
+      setDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    
+    const handleMouseMove = (e) => {
+      setMousePosition({ x: e.clientX, y: e.clientY });
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [darkMode]);
+
+  // Animation loop for particles
+  useEffect(() => {
+    const animateParticles = () => {
+      setParticles(prevParticles => 
+        prevParticles.map(p => {
+          // Update position
+          let newX = p.x + p.velocity.x;
+          let newY = p.y + p.velocity.y;
+          
+          // Bounce off edges
+          if (newX <= 0 || newX >= dimensions.width) {
+            p.velocity.x *= -1;
+            newX = p.x + p.velocity.x;
+          }
+          
+          if (newY <= 0 || newY >= dimensions.height) {
+            p.velocity.y *= -1;
+            newY = p.y + p.velocity.y;
+          }
+          
+          // Apply interaction with mouse when hovering
+          if (isHovering) {
+            const dx = mousePosition.x - p.x;
+            const dy = mousePosition.y - p.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < 100) {
+              const angle = Math.atan2(dy, dx);
+              const force = (100 - distance) / 500;
+              
+              // Attract to mouse
+              return {
+                ...p,
+                x: newX + Math.cos(angle) * force * 2,
+                y: newY + Math.sin(angle) * force * 2
+              };
+            }
+          }
+          
+          return {
+            ...p,
+            x: newX,
+            y: newY
+          };
+        })
+      );
+      
+      animationRef.current = requestAnimationFrame(animateParticles);
+    };
+    
+    animationRef.current = requestAnimationFrame(animateParticles);
+    
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [dimensions, isHovering, mousePosition]);
+
+  // Clock and date updates
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
@@ -50,7 +182,7 @@ export default function HeadLayout() {
     return () => clearInterval(interval);
   }, []);
 
-  // Configuração de áudio
+  // Audio handling
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.src = playlist[currentSong].path;
@@ -58,7 +190,7 @@ export default function HeadLayout() {
       
       const setAudioData = () => {
         if (audioRef.current) {
-          setDuration(audioRef.current.duration);
+          setDuration(audioRef.current.duration || 180); // Default to 3 minutes if duration not available
         }
       };
       
@@ -80,6 +212,9 @@ export default function HeadLayout() {
       audioRef.current.addEventListener('timeupdate', updateProgress);
       audioRef.current.addEventListener('ended', handleEnd);
 
+      // Simulate audio metadata since we don't have real audio files
+      setTimeout(setAudioData, 100);
+
       return () => {
         if (audioRef.current) {
           audioRef.current.removeEventListener('loadedmetadata', setAudioData);
@@ -90,15 +225,26 @@ export default function HeadLayout() {
     }
   }, [currentSong]);
 
-=  useEffect(() => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.play();
-      } else {
-        audioRef.current.pause();
-      }
+  // Simulated audio playback
+  useEffect(() => {
+    let timer;
+    if (isPlaying) {
+      timer = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= duration) {
+            clearInterval(timer);
+            setIsPlaying(false);
+            return 0;
+          }
+          return prev + 1;
+        });
+      }, 1000);
     }
-  }, [isPlaying, currentSong]);
+    
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isPlaying, duration]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -106,111 +252,6 @@ export default function HeadLayout() {
     }
   }, [volume, isMuted]);
 
-  useEffect(() => {
-    if (!canvasRef.current || !containerRef.current) return;
-
-    const initParticles = () => {
-      const newParticles = [];
-      for (let i = 0; i < 100; i++) {
-        newParticles.push({
-          x: Math.random() * window.innerWidth,
-          y: Math.random() * window.innerHeight,
-          size: Math.random() * 3 + 1,
-          color: darkMode ? 
-            `rgba(${Math.floor(Math.random() * 90 + 60)}, ${Math.floor(Math.random() * 30 + 20)}, ${Math.floor(Math.random() * 150 + 100)}, 0.8)` : 
-            `rgba(${Math.floor(Math.random() * 50 + 20)}, ${Math.floor(Math.random() * 100 + 150)}, ${Math.floor(Math.random() * 100 + 150)}, 0.8)`,
-          velocity: {
-            x: Math.random() * 2 - 1,
-            y: Math.random() * 2 - 1
-          }
-        });
-      }
-      setParticles(newParticles);
-    };
-
-    initParticles();
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    
-    let animationFrameId;
-    
-    const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      particles.forEach((particle, i) => {
-        particle.x += particle.velocity.x;
-        particle.y += particle.velocity.y;
-        
-        if (particle.x < 0 || particle.x > canvas.width) {
-          particle.velocity.x *= -1;
-        }
-        if (particle.y < 0 || particle.y > canvas.height) {
-          particle.velocity.y *= -1;
-        }
-        
-        if (isHovering) {
-          const dx = mousePosition.x - particle.x;
-          const dy = mousePosition.y - particle.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          if (distance < 150) {
-            particle.velocity.x += dx * 0.001;
-            particle.velocity.y += dy * 0.001;
-          }
-        }
-        
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        ctx.fillStyle = particle.color;
-        ctx.fill();
-      });
-      
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          if (distance < 100) {
-            ctx.beginPath();
-            ctx.strokeStyle = darkMode ? `rgba(60, 30, 130, ${1 - distance / 100})` : `rgba(30, 80, 130, ${1 - distance / 100})`;
-            ctx.lineWidth = 0.5;
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-      
-      animationFrameId = window.requestAnimationFrame(render);
-    };
-    
-    render();
-    
-    const handleResize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    
-    // Atualizar posição do mouse
-    const handleMouseMove = (e) => {
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    };
-    
-    window.addEventListener('resize', handleResize);
-    window.addEventListener('mousemove', handleMouseMove);
-    
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.cancelAnimationFrame(animationFrameId);
-    };
-  }, [darkMode, mousePosition, isHovering, particles]);
-
-  // Funções de controle do player
   const togglePlay = () => setIsPlaying(prev => !prev);
   const toggleMute = () => setIsMuted(prev => !prev);
   const toggleDarkMode = () => setDarkMode(prev => !prev);
@@ -242,14 +283,27 @@ export default function HeadLayout() {
   return (
     <div 
       ref={containerRef}
-      className={`relative w-screen h-screen overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-indigo-900'}`}
+      className={`relative w-full h-screen overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-indigo-900'}`}
       onMouseEnter={() => setIsHovering(true)}
       onMouseLeave={() => setIsHovering(false)}
     >
-      {/* Canvas para efeitos interativos */}
-      <canvas ref={canvasRef} className="absolute inset-0 z-0" />
+      <div className="absolute inset-0 z-0">
+        {particles.map((particle) => (
+          <div 
+            key={particle.id}
+            className="absolute rounded-full"
+            style={{
+              left: `${particle.x}px`,
+              top: `${particle.y}px`,
+              width: `${particle.size}px`,
+              height: `${particle.size}px`,
+              backgroundColor: particle.color,
+              transition: 'transform 0.1s linear'
+            }}
+          />
+        ))}
+      </div>
       
-      {/* Controle de tema */}
       <button 
         onClick={toggleDarkMode} 
         className="fixed top-4 right-4 z-30 bg-gray-800/50 hover:bg-gray-700/70 backdrop-blur-md p-2 rounded-full transition-all shadow-lg"
@@ -257,7 +311,6 @@ export default function HeadLayout() {
         {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-indigo-200" />}
       </button>
 
-      {/* Player de música */}
       <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-20 transition-all duration-300">
         <div className={`flex items-center px-3 py-2 ${darkMode ? 'bg-gray-800/40' : 'bg-indigo-800/40'} backdrop-blur-md rounded-full shadow-lg border border-white/20 w-80 hover:w-96 transition-all duration-300`}>
           <div className="flex items-center space-x-2">
@@ -297,11 +350,11 @@ export default function HeadLayout() {
                   value={progress}
                   onChange={handleProgressChange}
                   className={`w-full h-1 rounded-full appearance-none cursor-pointer ${
-                    darkMode ? 'bg-gray-600 accent-purple-500' : 'bg-indigo-700 accent-indigo-400'
+                    darkMode ? 'bg-gray-600' : 'bg-indigo-700'
                   } group-hover:h-2 transition-all`}
                 />
               </div>
-              <span className="text-xs text-gray-300 overflow-hidden">{formatTime(duration)}</span>
+              <span className="text-xs text-gray-300">{formatTime(duration)}</span>
             </div>
           </div>
           
@@ -320,7 +373,7 @@ export default function HeadLayout() {
               value={volume}
               onChange={handleVolumeChange}
               className={`w-12 h-1 ml-1 rounded-lg appearance-none cursor-pointer ${
-                darkMode ? 'bg-gray-600 accent-purple-500' : 'bg-indigo-700 accent-indigo-400'
+                darkMode ? 'bg-gray-600' : 'bg-indigo-700'
               }`}
             />
           </div>
@@ -329,12 +382,11 @@ export default function HeadLayout() {
 
       <audio ref={audioRef} />
 
-      {/* Conteúdo principal */}
       <div className="relative z-10 h-full flex flex-col items-center justify-center text-center">
         <div 
           className={`transform transition-all duration-500 hover:scale-105 ${isHovering ? 'translate-y-0' : 'translate-y-4'}`}
         >
-          <h1 className={`text-8xl font-extrabold font-mono drop-shadow-lg ${
+          <h1 className={`text-6xl font-extrabold font-mono drop-shadow-lg ${
             darkMode ? 'text-purple-200' : 'text-indigo-100'
           }`}>
             {time}
@@ -354,21 +406,21 @@ export default function HeadLayout() {
           <p className={`text-3xl font-bold ${
             darkMode ? 'bg-gradient-to-r from-purple-400 to-pink-500' : 'bg-gradient-to-r from-indigo-400 to-blue-500'
           } bg-clip-text text-transparent`}>
-            Bem-Vindo ao meu Portfólio
+            Welcome to my Portfolio
           </p>
           <p className="mt-3 text-lg text-gray-300">
-            Explore meus projetos enquanto curte uma boa música
+            Explore my projects while enjoying some good music
           </p>
           <div className="mt-6 flex justify-center gap-4">
             <button className={`px-6 py-2 rounded-md font-medium transform transition-all hover:-translate-y-1 hover:shadow-lg ${
               darkMode ? 'bg-purple-600 hover:bg-purple-500 text-white' : 'bg-indigo-600 hover:bg-indigo-500 text-white'
             }`}>
-              Projetos
+              Projects
             </button>
             <button className={`px-6 py-2 rounded-md font-medium transform transition-all hover:-translate-y-1 hover:shadow-lg ${
               darkMode ? 'bg-gray-800 hover:bg-gray-700 text-purple-200' : 'bg-indigo-800 hover:bg-indigo-700 text-indigo-200'
             }`}>
-              Contato
+              Contact
             </button>
           </div>
         </div>
